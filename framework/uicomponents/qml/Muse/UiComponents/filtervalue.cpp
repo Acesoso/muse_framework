@@ -28,6 +28,29 @@
 
 using namespace muse::uicomponents;
 
+namespace {
+QString normalizeSearchText(const QString& value)
+{
+    QString normalized = value.normalized(QString::NormalizationForm_KD);
+    QString result;
+    result.reserve(normalized.size());
+
+    for (const QChar ch : normalized) {
+        switch (ch.category()) {
+        case QChar::Mark_NonSpacing:
+        case QChar::Mark_SpacingCombining:
+        case QChar::Mark_Enclosing:
+            continue;
+        default:
+            result.append(ch.toCaseFolded());
+            break;
+        }
+    }
+
+    return result;
+}
+}
+
 FilterValue::FilterValue(QObject* parent)
     : Filter(parent)
 {
@@ -53,8 +76,11 @@ bool FilterValue::acceptsRow(const int sourceRow, const QModelIndex& sourceParen
         return data == m_roleValue;
     case CompareType::NotEqual:
         return data != m_roleValue;
-    case CompareType::Contains:
-        return data.toString().contains(m_roleValue.toString(), Qt::CaseInsensitive);
+    case CompareType::Contains: {
+        const QString normalizedData = normalizeSearchText(data.toString());
+        const QString normalizedValue = normalizeSearchText(m_roleValue.toString());
+        return normalizedData.contains(normalizedValue);
+    }
     }
 
     return false;
