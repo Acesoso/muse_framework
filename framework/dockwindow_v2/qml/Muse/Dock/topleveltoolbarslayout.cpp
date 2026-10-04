@@ -22,6 +22,8 @@
 
 #include "topleveltoolbarslayout.h"
 
+#include <QTimer>
+
 #include "kddockwidgets/src/Config.h"
 #include "kddockwidgets/src/core/DockWidget.h"
 #include "kddockwidgets/src/core/Layout.h"
@@ -60,7 +62,16 @@ void TopLevelToolBarsLayout::setUpPageConnections(const DockPageView* page)
 
 void TopLevelToolBarsLayout::scheduleRelayout()
 {
-    m_window->polish();
+    if (m_relayoutScheduled) {
+        return;
+    }
+
+    m_relayoutScheduled = true;
+    // Let the docking framework finish syncing widget sizes before recalculating toolbar padding.
+    QTimer::singleShot(0, this, [this]() {
+        m_relayoutScheduled = false;
+        relayout();
+    });
 }
 
 void TopLevelToolBarsLayout::relayout()

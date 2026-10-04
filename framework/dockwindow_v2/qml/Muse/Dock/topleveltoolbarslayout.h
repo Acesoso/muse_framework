@@ -60,5 +60,6 @@ private:
 
     KDDockWidgets::QtQuick::MainWindow* m_mainWindow = nullptr;
     DockWindow* m_window = nullptr;
+    bool m_relayoutScheduled = false;
 };
 }

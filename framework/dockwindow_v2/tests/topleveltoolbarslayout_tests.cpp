@@ -19,9 +19,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 #include <gmock/gmock.h>
 
+#include <QEventLoop>
 #include <QList>
+#include <QTimer>
 
 #include "dockpageview.h"
 #include "docktoolbarview.h"
@@ -52,6 +55,9 @@ public:
         void scheduleRelayout() override
         {
             ++scheduledRelayoutCount;
+            if (performScheduledRelayout) {
+                TopLevelToolBarsLayout::scheduleRelayout();
+            }
         }
 
         DockPageView* currentPage() const override { return page; }
@@ -63,6 +69,7 @@ public:
         bool applyLayoutSizeToFitWindow(int targetWidth) override
         {
             appliedLayoutWidth = targetWidth;
+            ++layoutPassCount;
             return layoutSizeFitsWindow;
         }
 
@@ -71,9 +78,11 @@ public:
         int windowWidth = 0;
         int separator = 0;
         bool layoutSizeFitsWindow = true;
+        bool performScheduledRelayout = false;
 
         int scheduledRelayoutCount = 0;
         int appliedLayoutWidth = -1;
+        int layoutPassCount = 0;
     };
 
     void SetUp() override
@@ -123,6 +132,13 @@ public:
     {
         EXPECT_EQ(toolBar->minimumWidth(), toolBar->contentWidth());
         EXPECT_EQ(toolBar->maximumWidth(), UNCONSTRAINED_TOOLBAR_WIDTH);
+    }
+
+    void waitForScheduledRelayout()
+    {
+        QEventLoop eventLoop;
+        QTimer::singleShot(1, &eventLoop, &QEventLoop::quit);
+        eventLoop.exec();
     }
 
     std::shared_ptr<TestTopLevelToolBarsLayout> m_layout;
@@ -506,6 +522,35 @@ TEST_F(Dock_TopLevelToolBarsLayoutTests, FloatingAndHiddenToolBarsAreNotPinned)
     //! [THEN] The docked toolbars are laid out as usual
     expectUnpinned(left);
     expectPinned(right, 100);
+}
+
+TEST_F(Dock_TopLevelToolBarsLayoutTests, CentralToolBarIsRecenteredAfterRightToolBarIsRedocked)
+{
+    //! [GIVEN] Left, central and right toolbars
+    addToolBar(100, DockToolBarAlignment::Left);
+    ToolBarView* central = addToolBar(200, DockToolBarAlignment::Center);
+    ToolBarView* right = addToolBar(100, DockToolBarAlignment::Right);
+
+    m_layout->windowWidth = 1000;
+    m_layout->separator = 4;
+    m_layout->performScheduledRelayout = true;
+    m_layout->setUpPageConnections(m_page);
+
+    //! [WHEN] The right toolbar is undocked
+    right->setFloatingState(true);
+    waitForScheduledRelayout();
+
+    ASSERT_GT(m_layout->layoutPassCount, 0);
+    expectPinned(central, 600);
+
+    //! [WHEN] The right toolbar is redocked
+    const int previousLayoutPassCount = m_layout->layoutPassCount;
+    right->setFloatingState(false);
+    waitForScheduledRelayout();
+    ASSERT_GT(m_layout->layoutPassCount, previousLayoutPassCount);
+
+    //! [THEN] The central toolbar is padded to keep its content centered
+    expectPinned(central, 496);
 }
 
 TEST_F(Dock_TopLevelToolBarsLayoutTests, RepeatedRelayoutDoesNotAccumulatePinnedWidths)
